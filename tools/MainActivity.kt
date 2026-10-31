@@ -61,7 +61,7 @@ class MainActivity : FlutterActivity() {
             }
             api.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO
             api.setImage(File(path))
-            return api.utf8Text ?: ""
+            return api.getUTF8Text() ?: ""
         } finally {
             api.recycle()
         }
