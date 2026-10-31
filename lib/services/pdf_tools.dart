@@ -5,7 +5,7 @@ import 'dart:ui' as ui;
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
+import 'package:pdf/pdf.dart' as pdfw;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfrx/pdfrx.dart';
 
@@ -117,7 +117,7 @@ class PdfTools {
       final h = oriented.height.toDouble();
       // Scale so the longer side is about A4 length in points.
       final scale = 842 / (w > h ? w : h);
-      final format = PdfPageFormat(w * scale, h * scale, marginAll: 0);
+      final format = pdfw.PdfPageFormat(w * scale, h * scale, marginAll: 0);
       final image = pw.MemoryImage(jpg);
       doc.addPage(
         pw.Page(

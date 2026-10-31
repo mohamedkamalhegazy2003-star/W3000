@@ -36,7 +36,7 @@ class OcrService {
   static Future<String> embeddedText(PdfPage page) async {
     try {
       final t = await page.loadText();
-      return t.fullText.trim();
+      return (t?.fullText ?? '').trim();
     } catch (_) {
       return '';
     }
