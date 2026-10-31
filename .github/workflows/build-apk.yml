@@ -38,14 +38,18 @@ jobs:
         run: |
           flutter create --org com.wpdf --project-name wpdf --platforms android .
           python3 tools/patch_android.py
+          rm -rf test
 
       - name: Pub get
+        shell: bash
         run: flutter pub get 2>&1 | tee build.log
 
       - name: Analyze
+        shell: bash
         run: flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee -a build.log
 
       - name: Build APK
+        shell: bash
         run: flutter build apk --release 2>&1 | tee -a build.log
 
       - name: Rename APK

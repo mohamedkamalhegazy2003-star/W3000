@@ -74,6 +74,28 @@ def patch_gradle():
         sys.exit("no app gradle file found")
 
 
+def add_tesseract():
+    dep_kts = '\ndependencies {\n    implementation("cz.adaptech.tesseract4android:tesseract4android:4.7.0")\n}\n'
+    dep_groovy = "\ndependencies {\n    implementation 'cz.adaptech.tesseract4android:tesseract4android:4.7.0'\n}\n"
+    for name, dep in (("build.gradle.kts", dep_kts), ("build.gradle", dep_groovy)):
+        pth = os.path.join(APP, name)
+        if os.path.exists(pth):
+            s = read(pth)
+            if "tesseract4android" not in s:
+                write(pth, s + dep)
+            print("tesseract dependency added to", name)
+    # Replace MainActivity with the OCR bridge.
+    kdir = os.path.join(MAIN, "kotlin")
+    for old in glob.glob(os.path.join(kdir, "**", "MainActivity.*"), recursive=True):
+        os.remove(old)
+    for old in glob.glob(os.path.join(MAIN, "java", "**", "MainActivity.*"), recursive=True):
+        os.remove(old)
+    target = os.path.join(kdir, "com", "wpdf", "wpdf")
+    os.makedirs(target, exist_ok=True)
+    shutil.copy(os.path.join(ROOT, "tools", "MainActivity.kt"), os.path.join(target, "MainActivity.kt"))
+    print("MainActivity installed")
+
+
 def copy_icons():
     src = os.path.join(ROOT, "tools", "res")
     dst = os.path.join(MAIN, "res")
@@ -92,5 +114,6 @@ if __name__ == "__main__":
         sys.exit("android/ not found - run flutter create first")
     patch_manifest()
     patch_gradle()
+    add_tesseract()
     copy_icons()
     print("android patched")
