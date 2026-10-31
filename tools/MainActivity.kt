@@ -2,7 +2,7 @@ package com.wpdf.wpdf
 
 import android.os.Handler
 import android.os.Looper
-import cz.adaptech.tesseract4android.TessBaseAPI
+import com.googlecode.tesseract.android.TessBaseAPI
 import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
