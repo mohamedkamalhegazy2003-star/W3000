@@ -64,7 +64,8 @@ def patch_gradle():
         if not os.path.exists(p):
             continue
         s = read(p)
-        s2 = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 24", s)
+        s2 = re.sub(r"compileSdk\s*=\s*flutter\.compileSdkVersion", "compileSdk = 36", s)
+        s2 = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 24", s2)
         s2 = re.sub(r"minSdkVersion\s*=?\s*flutter\.minSdkVersion", "minSdkVersion 24", s2)
         s2 = re.sub(r"minSdk\s*=\s*\d+", "minSdk = 24", s2) if name.endswith(".kts") else s2
         write(p, s2)
