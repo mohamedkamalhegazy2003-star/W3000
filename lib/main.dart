@@ -1,6 +1,4 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -11,12 +9,6 @@ import 'screens/home_screen.dart';
 Future<void> main() async {
   pdfrxFlutterInitialize();
   await AppSettings.instance.load();
-  // Ask Android for the highest refresh rate (120 Hz on supported phones).
-  if (defaultTargetPlatform == TargetPlatform.android) {
-    try {
-      await FlutterDisplayMode.setHighRefreshRate();
-    } catch (_) {}
-  }
   runApp(const WpdfApp());
 }
 

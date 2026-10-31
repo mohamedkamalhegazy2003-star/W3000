@@ -1,5 +1,7 @@
 package com.wpdf.wpdf
 
+import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import com.googlecode.tesseract.android.TessBaseAPI
@@ -14,6 +16,29 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestHighRefreshRate()
+    }
+
+    // Ask Android for the highest refresh rate the display supports (120 Hz).
+    private fun requestHighRefreshRate() {
+        try {
+            if (Build.VERSION.SDK_INT >= 23) {
+                val display = if (Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay
+                val current = display?.mode ?: return
+                val best = display.supportedModes
+                    .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+                    .maxByOrNull { it.refreshRate } ?: return
+                val lp = window.attributes
+                lp.preferredDisplayModeId = best.modeId
+                if (Build.VERSION.SDK_INT >= 30) lp.preferredRefreshRate = best.refreshRate
+                window.attributes = lp
+            }
+        } catch (_: Throwable) {
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
