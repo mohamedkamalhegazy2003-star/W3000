@@ -75,8 +75,8 @@ def patch_gradle():
 
 
 def add_tesseract():
-    dep_kts = '\ndependencies {\n    implementation("cz.adaptech.tesseract4android:tesseract4android:4.7.0")\n}\n'
-    dep_groovy = "\ndependencies {\n    implementation 'cz.adaptech.tesseract4android:tesseract4android:4.7.0'\n}\n"
+    dep_kts = '\ndependencies {\n    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")\n}\n'
+    dep_groovy = "\ndependencies {\n    implementation 'cz.adaptech.tesseract4android:tesseract4android:4.9.0'\n}\n"
     for name, dep in (("build.gradle.kts", dep_kts), ("build.gradle", dep_groovy)):
         pth = os.path.join(APP, name)
         if os.path.exists(pth):
@@ -84,6 +84,27 @@ def add_tesseract():
             if "tesseract4android" not in s:
                 write(pth, s + dep)
             print("tesseract dependency added to", name)
+    # Tesseract4Android is published on JitPack: add the repository everywhere.
+    root_kts = os.path.join(ANDROID, "build.gradle.kts")
+    root_groovy = os.path.join(ANDROID, "build.gradle")
+    if os.path.exists(root_kts):
+        t = read(root_kts)
+        if "jitpack.io" not in t:
+            write(root_kts, t + '\nallprojects {\n    repositories {\n        maven { url = uri("https://jitpack.io") }\n    }\n}\n')
+    elif os.path.exists(root_groovy):
+        t = read(root_groovy)
+        if "jitpack.io" not in t:
+            write(root_groovy, t + "\nallprojects {\n    repositories {\n        maven { url 'https://jitpack.io' }\n    }\n}\n")
+    for name in ("settings.gradle.kts", "settings.gradle"):
+        sp = os.path.join(ANDROID, name)
+        if os.path.exists(sp):
+            t = read(sp)
+            if "dependencyResolutionManagement" not in t and "jitpack.io" not in t:
+                if name.endswith(".kts"):
+                    t += '\ndependencyResolutionManagement {\n    repositories {\n        google()\n        mavenCentral()\n        maven { url = uri("https://jitpack.io") }\n    }\n}\n'
+                else:
+                    t += "\ndependencyResolutionManagement {\n    repositories {\n        google()\n        mavenCentral()\n        maven { url 'https://jitpack.io' }\n    }\n}\n"
+                write(sp, t)
     # Replace MainActivity with the OCR bridge.
     kdir = os.path.join(MAIN, "kotlin")
     for old in glob.glob(os.path.join(kdir, "**", "MainActivity.*"), recursive=True):
