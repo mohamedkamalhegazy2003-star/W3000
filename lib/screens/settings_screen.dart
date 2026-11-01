@@ -8,14 +8,21 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(appBar: AppBar(title: Text(tr('settings'))), body: const SettingsBody());
+  }
+}
+
+class SettingsBody extends StatelessWidget {
+  const SettingsBody({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     final s = AppSettings.instance;
     return ListenableBuilder(
       listenable: s,
       builder: (context, _) => Directionality(
         textDirection: s.isArabic ? TextDirection.rtl : TextDirection.ltr,
-        child: Scaffold(
-          appBar: AppBar(title: Text(tr('settings'))),
-          body: ListView(
+        child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
               Text(tr('language'), style: Theme.of(context).textTheme.titleSmall),
@@ -52,7 +59,6 @@ class SettingsScreen extends StatelessWidget {
                 onSelectionChanged: (v) => s.setTranslateTarget(v.first),
               ),
             ],
-          ),
         ),
       ),
     );

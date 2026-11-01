@@ -32,6 +32,20 @@ jobs:
           curl -fL -o assets/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
           curl -fL -o assets/fonts/Amiri-Regular.ttf https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf
           curl -fL -o assets/fonts/Amiri-Bold.ttf https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Bold.ttf
+          for w in Regular Medium Bold; do
+            curl -fL -o assets/fonts/Plex-$w.ttf https://github.com/google/fonts/raw/main/ofl/ibmplexsansarabic/IBMPlexSansArabic-$w.ttf || rm -f assets/fonts/Plex-$w.ttf
+          done
+          if [ -f assets/fonts/Plex-Regular.ttf ]; then
+            {
+              echo "  fonts:"
+              echo "    - family: Plex"
+              echo "      fonts:"
+              echo "        - asset: assets/fonts/Plex-Regular.ttf"
+              [ -f assets/fonts/Plex-Medium.ttf ] && { echo "        - asset: assets/fonts/Plex-Medium.ttf"; echo "          weight: 500"; }
+              [ -f assets/fonts/Plex-Bold.ttf ] && { echo "        - asset: assets/fonts/Plex-Bold.ttf"; echo "          weight: 700"; }
+            } >> pubspec.yaml
+          fi
+          tail -12 pubspec.yaml
           ls -la assets/tessdata assets/fonts
 
       - name: Generate Android project

@@ -10,8 +10,11 @@ import '../core/strings.dart';
 import '../core/ui.dart';
 import '../services/ocr_service.dart';
 import '../services/pdf_tools.dart';
+import 'text_screen.dart';
+import 'package:file_picker/file_picker.dart';
+import '../core/theme.dart';
 
-enum _Tool { highlight, draw, text, signature, eraser }
+enum _Tool { highlight, draw, text, signature, image, eraser }
 
 class _Mark {
   _Mark(this.tool, this.color, this.width);
@@ -22,6 +25,8 @@ class _Mark {
   final List<Offset> points = []; // normalized 0..1
   String text = '';
   double size = 0.03; // text size relative to page width
+  ui.Image? image;
+  double imageWidth = 0.4; // relative to page width
 }
 
 /// Annotation editor: highlight, draw, Arabic/English text, signature.
@@ -40,8 +45,9 @@ class _EditorScreenState extends State<EditorScreen> {
   PdfDocument? _doc;
   int _page = 0;
   ui.Image? _bg;
-  _Tool _tool = _Tool.draw;
-  Color _color = const Color(0xFFE53935);
+  _Tool _tool = _Tool.highlight;
+  Color _color = const Color(0xFFFFC107);
+  double _thick = 0.5; // 0..1 slider
   final Map<int, List<_Mark>> _marks = {};
   _Mark? _current;
 
@@ -109,18 +115,45 @@ class _EditorScreenState extends State<EditorScreen> {
       _erase(n);
       return;
     }
+    if (_tool == _Tool.image) {
+      _placeImage(n);
+      return;
+    }
     final w = switch (_tool) {
-      _Tool.highlight => 0.028,
-      _Tool.signature => 0.004,
-      _ => 0.004,
+      _Tool.highlight => 0.012 + 0.04 * _thick,
+      _Tool.signature => 0.003 + 0.006 * _thick,
+      _ => 0.002 + 0.012 * _thick,
     };
     final c = switch (_tool) {
-      _Tool.highlight => const Color(0x66FFEB3B),
+      _Tool.highlight => _color.withValues(alpha: 0.4),
       _Tool.signature => const Color(0xFF1A237E),
       _ => _color,
     };
     _current = _Mark(_tool, c, w)..points.add(n);
     setState(() {});
+  }
+
+  Future<void> _placeImage(Offset pos) async {
+    final r = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    final bytes = r?.files.single.bytes;
+    if (bytes == null) return;
+    final codec = await ui.instantiateImageCodec(bytes, targetWidth: 900);
+    final frame = await codec.getNextFrame();
+    final m = _Mark(_Tool.image, Colors.white, 0)..image = frame.image;
+    m.points.add(pos);
+    if (mounted) setState(() => _list.add(m));
+  }
+
+  Future<void> _ocrCard({required bool translate}) async {
+    final doc = _doc!;
+    final text = await runBusy(context, () => OcrService.pageText(doc.pages[_page]));
+    if (text == null || !mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => TextScreen(title: '${tr('page')} ${_page + 1}', text: text, autoTranslate: translate),
+      ),
+    );
   }
 
   void _update(Offset local, Size size) {
@@ -152,7 +185,18 @@ class _EditorScreenState extends State<EditorScreen> {
 
   static void paintMarks(Canvas canvas, Size size, List<_Mark> marks) {
     for (final m in marks) {
-      if (m.tool == _Tool.text) {
+      if (m.tool == _Tool.image && m.image != null) {
+        final img = m.image!;
+        final w = size.width * m.imageWidth;
+        final h = w * img.height / img.width;
+        final c = Offset(m.points.first.dx * size.width, m.points.first.dy * size.height);
+        canvas.drawImageRect(
+          img,
+          Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
+          Rect.fromCenter(center: c, width: w, height: h),
+          Paint()..filterQuality = FilterQuality.medium,
+        );
+      } else if (m.tool == _Tool.text) {
         final tp = TextPainter(
           text: TextSpan(
             text: m.text,
@@ -255,118 +299,205 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final doc = _doc;
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dirty = _marks.values.any((l) => l.isNotEmpty);
     return Scaffold(
+      backgroundColor: dark ? const Color(0xFF1B1B1B) : const Color(0xFFE5E7EB),
       appBar: AppBar(
-        title: Text('${tr('edit')} ${_page + 1}${doc == null ? '' : ' / ${doc.pages.length}'}'),
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(p.basename(widget.path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            Text(
+              '${tr('page')} ${_page + 1} ${tr('of')} ${doc?.pages.length ?? '-'}',
+              style: const TextStyle(fontSize: 11.5, color: kBrand),
+            ),
+          ],
+        ),
         actions: [
-          IconButton(
-            tooltip: tr('undo'),
-            icon: const Icon(Icons.undo_rounded),
-            onPressed: _list.isEmpty ? null : () => setState(_list.removeLast),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: FilledButton(
+              onPressed: dirty ? _save : null,
+              style: FilledButton.styleFrom(backgroundColor: kBrand, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+              child: Text(tr('save')),
+            ),
           ),
-          IconButton(
-            tooltip: tr('editText'),
-            icon: const Icon(Icons.text_snippet_rounded),
-            onPressed: doc == null ? null : _ocrEditText,
-          ),
-          IconButton(
-            tooltip: tr('save'),
-            icon: const Icon(Icons.check_rounded),
-            onPressed: _marks.values.any((l) => l.isNotEmpty) ? _save : null,
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'ocrEdit') _ocrEditText();
+            },
+            itemBuilder: (_) => [PopupMenuItem(value: 'ocrEdit', child: Text(tr('editText')))],
           ),
         ],
       ),
       body: _bg == null
           ? const Center(child: CircularProgressIndicator())
-          : Column(
+          : Stack(
               children: [
-                Expanded(
+                Padding(
+                  padding: const EdgeInsets.all(14),
                   child: Center(
-                    child: InteractiveViewer(
-                      panEnabled: false,
-                      scaleEnabled: false,
-                      child: AspectRatio(
-                        aspectRatio: _bg!.width / _bg!.height,
-                        child: LayoutBuilder(
-                          builder: (context, c) {
-                            final size = Size(c.maxWidth, c.maxHeight);
-                            return GestureDetector(
-                              onPanStart: (d) => _start(d.localPosition, size),
-                              onPanUpdate: (d) => _update(d.localPosition, size),
-                              onPanEnd: (_) => _end(),
-                              onTapUp: (d) {
-                                if (_tool == _Tool.text) _start(d.localPosition, size);
-                              },
+                    child: AspectRatio(
+                      aspectRatio: _bg!.width / _bg!.height,
+                      child: LayoutBuilder(
+                        builder: (context, c) {
+                          final size = Size(c.maxWidth, c.maxHeight);
+                          return GestureDetector(
+                            onPanStart: (d) => _start(d.localPosition, size),
+                            onPanUpdate: (d) => _update(d.localPosition, size),
+                            onPanEnd: (_) => _end(),
+                            onTapUp: (d) {
+                              if (_tool == _Tool.text || _tool == _Tool.image) _start(d.localPosition, size);
+                            },
+                            child: DecoratedBox(
+                              decoration: const BoxDecoration(
+                                boxShadow: [BoxShadow(color: Color(0x33000000), blurRadius: 14, offset: Offset(0, 4))],
+                              ),
                               child: CustomPaint(
                                 painter: _PagePainter(_bg!, [..._list, if (_current != null) _current!]),
                                 size: size,
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
                 ),
-                _toolbar(),
+                PositionedDirectional(
+                  top: 10,
+                  end: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 14, offset: Offset(0, 4))],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(tr('ocrDetected'), style: TextStyle(fontSize: 10.5, color: cs.onSurface.withValues(alpha: 0.5))),
+                        const SizedBox(height: 6),
+                        InkWell(
+                          onTap: () => _ocrCard(translate: false),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 5),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.document_scanner_rounded, size: 16, color: kBrand),
+                              const SizedBox(width: 6),
+                              Text(tr('extractText'), style: const TextStyle(color: kBrand, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                            ]),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => _ocrCard(translate: true),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 5),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.translate_rounded, size: 16, color: kBrand),
+                              const SizedBox(width: 6),
+                              Text(tr('smartTranslate'), style: const TextStyle(color: kBrand, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                            ]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
+      bottomNavigationBar: _toolbar(),
     );
   }
 
   Widget _toolbar() {
-    Widget tool(_Tool t, IconData icon, String label) => ChoiceChip(
-          avatar: Icon(icon, size: 18),
-          label: Text(label),
-          selected: _tool == t,
-          onSelected: (_) => setState(() => _tool = t),
-        );
-    final colors = [const Color(0xFFE53935), const Color(0xFF1E88E5), const Color(0xFF43A047), Colors.black];
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                spacing: 6,
+    final cs = Theme.of(context).colorScheme;
+    Widget tool(_Tool t, IconData icon, String label) {
+      final sel = _tool == t;
+      return Expanded(
+        child: InkWell(
+          onTap: () => setState(() => _tool = t),
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: sel ? kBrand.withValues(alpha: 0.12) : cs.onSurface.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: sel ? kBrand : cs.onSurface.withValues(alpha: 0.45)),
+              ),
+              const SizedBox(height: 3),
+              Text(label, style: TextStyle(fontSize: 10.5, color: sel ? kBrand : cs.onSurface.withValues(alpha: 0.55))),
+            ],
+          ),
+        ),
+      );
+    }
+
+    const colors = [Color(0xFFFFC107), Color(0xFF22C55E), Color(0xFFEF4444), Color(0xFF3B82F6)];
+    return Material(
+      color: cs.surface,
+      elevation: 12,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
                 children: [
-                  tool(_Tool.draw, Icons.edit_rounded, tr('draw')),
                   tool(_Tool.highlight, Icons.highlight_rounded, tr('highlight')),
+                  tool(_Tool.draw, Icons.edit_rounded, tr('pen')),
                   tool(_Tool.text, Icons.text_fields_rounded, tr('text')),
                   tool(_Tool.signature, Icons.draw_rounded, tr('signature')),
+                  tool(_Tool.image, Icons.image_rounded, tr('image')),
                   tool(_Tool.eraser, Icons.cleaning_services_rounded, tr('eraser')),
                 ],
               ),
-            ),
-            Row(
-              children: [
-                IconButton(onPressed: () => _changePage(-1), icon: const Icon(Icons.chevron_left_rounded)),
-                for (final c in colors)
-                  GestureDetector(
-                    onTap: () => setState(() => _color = c),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 6),
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: c,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: _color == c ? Theme.of(context).colorScheme.primary : Colors.transparent,
-                          width: 3,
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: tr('undo'),
+                    onPressed: _list.isEmpty ? null : () => setState(_list.removeLast),
+                    icon: const Icon(Icons.undo_rounded),
+                  ),
+                  IconButton(onPressed: () => _changePage(-1), icon: const Icon(Icons.chevron_left_rounded)),
+                  IconButton(onPressed: () => _changePage(1), icon: const Icon(Icons.chevron_right_rounded)),
+                  Expanded(
+                    child: Slider(
+                      value: _thick,
+                      onChanged: (v) => setState(() => _thick = v),
+                    ),
+                  ),
+                  for (final c in colors)
+                    GestureDetector(
+                      onTap: () => setState(() => _color = c),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: c,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _color == c ? kBrand : Colors.transparent, width: 3),
                         ),
                       ),
                     ),
-                  ),
-                const Spacer(),
-                IconButton(onPressed: () => _changePage(1), icon: const Icon(Icons.chevron_right_rounded)),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
